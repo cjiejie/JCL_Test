@@ -30,11 +30,17 @@
 
 #define TEST_TCP_SERVER		"tcp_ser"
 #define TEST_TCP_CLI			"tcp_cli"
+
+#define TEST_LOCAL_SER		"local_ser"
+#define TEST_LOCAL_CLI		"local_cli"
+
 #define TEST_IO_READ			"io_read"
 #define TEST_IO_SEND			"io_send"
 
 #define TEST_IP			"172.16.34.116"
 #define TEST_PORT		9896
+
+#define TEST_LOCAL_SOCK_NAME	"/tmp/test_socket_name"
 
 void UsagePrint()
 {
@@ -42,8 +48,8 @@ void UsagePrint()
 	printf("Usage: test <option> ...\n");
 	printf("\t-h\t\t--help\t\toutput usage and exit.\n");
 	printf("\t-d \t\t--debug\t\tdebug level.\n");
-	printf("\t-t \t\t--test\t\ttest mode, with : %s,%s,%s,%s.\n",TEST_TCP_SERVER,TEST_TCP_CLI,\
-					TEST_IO_READ,TEST_IO_SEND);
+	printf("\t-t \t\t--test\t\ttest mode, with : %s,%s,%s,%s,%s,%s.\n",TEST_TCP_SERVER,TEST_TCP_CLI,\
+					TEST_IO_READ,TEST_IO_SEND,TEST_LOCAL_SER,TEST_LOCAL_CLI);
 	printf("\t-v\t\t--version\tshow version and exit.\n");
 	printf("====================\n");
 }
@@ -132,6 +138,88 @@ int TestTcpCli()
 	return 0;
 }
 
+int TestLocalSer()
+{
+	printf("<%s,%d>into...\r\n",__func__,__LINE__);
+	int sock_fd = CreatLocalSocketServer(TEST_LOCAL_SOCK_NAME,I_AUTO);
+	if(sock_fd <3) {
+		printf("<%s,%d>Creat local sock err,ret[%d]\r\n",__func__,__LINE__,sock_fd);
+		return -1;
+	}
+	printf("<%s,%d>Creat local sock OK.\r\n",__func__,__LINE__);
+	unsigned int cliaddr_len = 0;
+	int connfd = -1,ret = -1;
+	struct sockaddr_in cli_addr = {0};
+	char buf[20]  = {0};
+	char send_buf[] = "200";
+	int read_len = -1;
+	while(1) {
+		cliaddr_len = sizeof(cli_addr);
+		connfd = accept(sock_fd, (struct sockaddr *)&cli_addr, &cliaddr_len);
+		if(connfd <3) {
+			printf("<%s,%d>accept local sock err,ret[%d]\r\n",__func__,__LINE__,connfd);
+			return -1;
+		}
+		printf("local sock connect.\n");
+		while(1) {
+			memset(buf,0,sizeof(buf));
+			read_len = ReadSocket(connfd, buf, sizeof(buf),1000);
+			if(read_len > 0) {
+				printf("<%s,%d>read:%d,%s \r\n",__func__,__LINE__,read_len,buf);
+				ret = WriteSocket(connfd,send_buf,strlen(send_buf),1000);
+				if(ret < 0) {
+					printf("<%s,%d> select err: errno[%d], %s\n",__func__,__LINE__,errno, strerror(errno));
+				}
+				if(NULL != strstr(buf,"end")) {
+					printf("<%s,%d>disconnect... \r\n",__func__,__LINE__);
+					close(connfd);
+					break;
+				}
+			} else if(read_len < 0) {
+				printf("<%s,%d>disconnect... \r\n",__func__,__LINE__);
+				close(connfd);
+				break;
+			}
+			sleep(1);
+		}
+	}
+}
+
+int TestLocalCli()
+{
+	printf("<%s,%d>into...!\r\n",__func__,__LINE__);
+	int ret = -1;
+	char read_buf[100] = {0};
+	char send_buf[] = "cccccccccc";
+	int fd = ConnectLocalSocket(TEST_LOCAL_SOCK_NAME);
+	if(fd < 3) {
+		printf("<%s,%d>connect err!ret[%d]\r\n",__func__,__LINE__,fd);
+		return -1;
+	}
+	printf("<%s,%d>connect local sock OK.\r\n",__func__,__LINE__);
+	while(1) {
+		memset(read_buf,0,sizeof(read_buf));
+		WriteSocket(fd,send_buf,strlen(send_buf),1000);
+		ret = ReadSocket(fd,read_buf,sizeof(read_buf),1000);
+		if(ret > 0) {
+			printf("<%s,%d>read:%d,%s \r\n",__func__,__LINE__,ret,read_buf);
+		} else if(ret < 0) {
+			printf("<%s,%d>disconnect, try again...\r\n",__func__,__LINE__);
+			close(fd);
+			sleep(1);
+			fd = ConnectTCPSocketServer(TEST_IP,TEST_PORT);
+			if(fd < 3) {
+				printf("<%s,%d>connect err!ret[%d]\r\n",__func__,__LINE__,fd);
+				return -1;
+			}
+			break;
+		}
+		sleep(1);
+	}
+
+	return 0;
+}
+
 int TestIOSend()
 {
 	printf("<%s,%d>not support!\r\n",__func__,__LINE__);
@@ -155,8 +243,12 @@ int TestFunc(char * func)
 		ret = TestIOSend();
 	} else if(0 == strcmp(func,TEST_IO_SEND)) {
 		ret = TestIORead();
+	} else if(0 == strcmp(func,TEST_LOCAL_SER)) {
+		ret = TestLocalSer();
+	} else if(0 == strcmp(func,TEST_LOCAL_CLI)) {
+		ret = TestLocalCli();
 	} else {
-		printf("<%s,%d>not support!\r\n",__func__,__LINE__);
+		printf("<%s,%d>%s not support!\r\n",__func__,__LINE__,func);
 	}
 	if(-1 == ret) {
 		printf("<%s,%d>test err!\r\n",__func__,__LINE__);
