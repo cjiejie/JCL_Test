@@ -21,6 +21,7 @@
 #include <getopt.h>
 #include <stdlib.h>
 #include <pwd.h>
+#include <stdarg.h>
 
 #include "../JCL/socket/socket.h"
 #include "../JCL/io/io.h"
@@ -316,27 +317,43 @@ int TestIORead()
 	return 0;
 }
 
-int TestFunc(char * func)
+int TestFunc(int first,...)
 {
-	int ret = -1;
-	if(0 == strcmp(func,TEST_TCP_SERVER)) {
+	int ret = -1,i = 0;
+	char args[10][10] = {{0}};
+	char *s = NULL;
+	if(first > 10 || first <1) {
+		printf("<%s,%d>jcl: args num too big:%d\r\n",__func__,__LINE__,first);
+		return -1;
+	}
+	va_list ap;
+	va_start(ap, first);
+	while(first--) {
+		s = va_arg(ap, char *);
+//		printf("<%s,%d>jcl: %s\r\n",__func__,__LINE__,s);
+		memcpy(args[i++],s,strlen(s));
+	}
+	va_end(ap);
+
+
+	if(0 == strcmp(args[0],TEST_TCP_SERVER)) {
 		ret = TestTcpServer();
-	} else if(0 == strcmp(func,TEST_TCP_CLI)) {
+	} else if(0 == strcmp(args[0],TEST_TCP_CLI)) {
 		ret = TestTcpCli();
-	} else if(0 == strcmp(func,TEST_IO_READ)) {
+	} else if(0 == strcmp(args[0],TEST_IO_READ)) {
 		ret = TestIOSend();
-	} else if(0 == strcmp(func,TEST_IO_SEND)) {
+	} else if(0 == strcmp(args[0],TEST_IO_SEND)) {
 		ret = TestIORead();
-	} else if(0 == strcmp(func,TEST_LOCAL_SER)) {
+	} else if(0 == strcmp(args[0],TEST_LOCAL_SER)) {
 		ret = TestLocalSer();
-	} else if(0 == strcmp(func,TEST_LOCAL_CLI)) {
+	} else if(0 == strcmp(args[0],TEST_LOCAL_CLI)) {
 		ret = TestLocalCli();
-	} else if(0 == strcmp(func,TEST_UDP_SERVER)) {
+	} else if(0 == strcmp(args[0],TEST_UDP_SERVER)) {
 		ret = TestUdpServer();
-	} else if(0 == strcmp(func,TEST_UDP_CLI)) {
+	} else if(0 == strcmp(args[0],TEST_UDP_CLI)) {
 		ret = TestUdpCli();
 	} else {
-		printf("<%s,%d>%s not support!\r\n",__func__,__LINE__,func);
+		printf("<%s,%d>%s not support!\r\n",__func__,__LINE__,args[0]);
 	}
 	if(-1 == ret) {
 		printf("<%s,%d>test err!\r\n",__func__,__LINE__);
@@ -374,7 +391,7 @@ int main(int argc, char *argv[])
 				 UsagePrint();
 				 return 0;
 			 case 't':
-				 TestFunc(optarg);
+				 TestFunc(argc-2,optarg,argv[optind]);
 				 return 0;
 			case '?':    /* The user specified an invalid option. */
 			default:    /* Something else: unexpected. */
