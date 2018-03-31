@@ -31,6 +31,9 @@
 #define TEST_TCP_SERVER		"tcp_ser"
 #define TEST_TCP_CLI			"tcp_cli"
 
+#define TEST_UDP_SERVER		"udp_ser"
+#define TEST_UDP_CLI			"udp_cli"
+
 #define TEST_LOCAL_SER		"local_ser"
 #define TEST_LOCAL_CLI		"local_cli"
 
@@ -40,18 +43,25 @@
 #define TEST_IP			"172.16.34.116"
 #define TEST_PORT		9896
 
+#define MAX_LEN 1024
+#define HALF_LEN 512
+
 #define TEST_LOCAL_SOCK_NAME	"/tmp/test_socket_name"
 
 void UsagePrint()
 {
-	printf("====================\n");
-	printf("Usage: test <option> ...\n");
-	printf("\t-h\t\t--help\t\toutput usage and exit.\n");
-	printf("\t-d \t\t--debug\t\tdebug level.\n");
-	printf("\t-t \t\t--test\t\ttest mode, with : %s,%s,%s,%s,%s,%s.\n",TEST_TCP_SERVER,TEST_TCP_CLI,\
-					TEST_IO_READ,TEST_IO_SEND,TEST_LOCAL_SER,TEST_LOCAL_CLI);
-	printf("\t-v\t\t--version\tshow version and exit.\n");
-	printf("====================\n");
+	printf("========================================\n");
+	printf("++++++++++++++++++++++++++++++++++++++++\n");
+	printf("Usage: test [option] [func] <param>\n");
+	printf(" -h\t--help\t\tOutput usage and exit.\n");
+	printf(" -d\t--debug\t\tDebug level.\n");
+	printf(" -v\t--version\tShow version and exit.\n");
+	printf(" -t \t--test\t\tTest mode, with : %s,%s;\n \t\t\t%s,%s,%s,%s;\n"
+					" \t\t\t%s,%s\n",TEST_TCP_SERVER,TEST_TCP_CLI,\
+					TEST_IO_READ,TEST_IO_SEND,TEST_LOCAL_SER,TEST_LOCAL_CLI,
+					TEST_UDP_SERVER,TEST_UDP_CLI);
+	printf("++++++++++++++++++++++++++++++++++++++++\n");
+	printf("========================================\n");
 }
 
 int TestTcpServer()
@@ -135,6 +145,80 @@ int TestTcpCli()
 		sleep(1);
 	}
 
+	return 0;
+}
+
+int TestUdpServer()
+{
+	printf("<%s,%d>into...!\r\n",__func__,__LINE__);
+	int socket_fd = -1,count = -1;
+	socket_fd = CreatUDPSocketServer(TEST_IP,TEST_PORT,5000);
+	if(socket_fd < 0) {
+		printf("<%s,%d>jcl: Creat UDP ser err!\r\n",__func__,__LINE__);
+		return -1;
+	}
+	char buf[HALF_LEN] = {0};
+	char send_buf[] = "200";
+	struct sockaddr_in client_addr = {0};  //clent_addr用于记录发送方的地址信息
+	socklen_t len = sizeof(client_addr);
+	while(1) {
+		count = recvfrom(socket_fd, buf, sizeof(buf), 0, (struct sockaddr*)&client_addr, &len);
+		if(count == -1 && errno == EAGAIN) {
+			printf("<%s,%d>jcl: recvfrom timeout, continue...\r\n",__func__,__LINE__);
+			continue;
+		} else if(count > 0) {
+			printf("<%s,%d>form:%s:%d \r\n",__func__,__LINE__,inet_ntoa(client_addr.sin_addr),client_addr.sin_port);
+			printf("<%s,%d>read:%d,%s \r\n",__func__,__LINE__,count,buf);
+			//发送信息给client，注意使用了clent_addr结构体指针
+			count = sendto(socket_fd, send_buf, sizeof(send_buf), 0, (struct sockaddr*)&client_addr, len);
+			if(count < 0) {
+				printf("<%s,%d> sendto err: errno[%d], %s\n",__func__,__LINE__,errno, strerror(errno));
+				printf("<%s,%d>continue... \r\n",__func__,__LINE__);
+				continue;
+			}
+		} else {
+			printf("<%s,%d> recvfrom err: errno[%d], %s\n",__func__,__LINE__,errno, strerror(errno));
+			close(socket_fd);
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+int TestUdpCli()
+{
+	printf("<%s,%d>into...!\r\n",__func__,__LINE__);
+	int socket_fd = -1,count = -1;
+	struct sockaddr_in ser_addr = {0};
+	socket_fd = ConnectUDPSocketServer(TEST_IP,TEST_PORT,(struct sockaddr*)&ser_addr);
+	if(socket_fd < 0) {
+		printf("<%s,%d>jcl: Connect UDP ser err!\r\n",__func__,__LINE__);
+		return -1;
+	}
+	socklen_t len = 0;
+	char read_buf[100] = {0};
+	char send_buf[] = "cccccccccc";
+	while(1) {
+		len = sizeof(struct sockaddr_in);
+		count = sendto(socket_fd, send_buf, sizeof(send_buf), 0, (struct sockaddr*)&ser_addr, len);
+		if(count <= 0) {
+			printf("<%s,%d> sendto err: errno[%d], %s\n",__func__,__LINE__,errno, strerror(errno));
+			printf("<%s,%d>continue... \r\n",__func__,__LINE__);
+			sleep(3);
+			continue;
+		} else {
+			printf("<%s,%d>send ok. \r\n",__func__,__LINE__);
+			count = recvfrom(socket_fd, read_buf, sizeof(read_buf), 0, (struct sockaddr*)&ser_addr, &len);  //接收来自server的信息
+			if(count == -1 && errno == EAGAIN) {
+				printf("<%s,%d>jcl: recvfrom timeout, continue...\r\n",__func__,__LINE__);
+				continue;
+			} else if(count > 0) {
+				printf("<%s,%d>read:%d,%s \r\n",__func__,__LINE__,count,read_buf);
+				sleep(1);
+			}
+		}
+	}
 	return 0;
 }
 
@@ -247,6 +331,10 @@ int TestFunc(char * func)
 		ret = TestLocalSer();
 	} else if(0 == strcmp(func,TEST_LOCAL_CLI)) {
 		ret = TestLocalCli();
+	} else if(0 == strcmp(func,TEST_UDP_SERVER)) {
+		ret = TestUdpServer();
+	} else if(0 == strcmp(func,TEST_UDP_CLI)) {
+		ret = TestUdpCli();
 	} else {
 		printf("<%s,%d>%s not support!\r\n",__func__,__LINE__,func);
 	}
